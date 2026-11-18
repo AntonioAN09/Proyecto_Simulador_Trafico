@@ -20,6 +20,20 @@ Vehiculo::Vehiculo(
     : identificador_(identificador), ciudad_(ciudad), metricas_(metricas),
       inicio_(inicio), destino_(destino)
 {
+    posicionActual_ = inicio_;
+    esperando_ = false;
+}
+
+Coordenada Vehiculo::obtenerPosicionActual() const
+{
+    std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+    return posicionActual_;
+}
+
+bool Vehiculo::estaEsperando() const
+{
+    std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+    return esperando_;
 }
 
 std::vector<Coordenada> Vehiculo::calcularRuta() const
@@ -37,6 +51,11 @@ void Vehiculo::conducir()
 
     for (const Coordenada& coordenada : ruta)
     {
+        {
+            std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+            posicionActual_ = coordenada;
+        }
+
         Interseccion& interseccion =
             ciudad_.obtenerInterseccion(coordenada.fila, coordenada.columna);
 
@@ -47,6 +66,8 @@ void Vehiculo::conducir()
             {
                 metricas_.iniciarEspera(identificador_, coordenada);
                 esperando = true;
+                std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+                esperando_ = true;
             }
 
             // Aqui el vehiculo espera a que el semaforo y la interseccion esten libres.
@@ -60,6 +81,8 @@ void Vehiculo::conducir()
         if (esperando)
         {
             metricas_.terminarEspera(identificador_);
+            std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+            esperando_ = false;
         }
 
         {
@@ -68,7 +91,8 @@ void Vehiculo::conducir()
                       << " esta en (" << coordenada.fila << ","
                       << coordenada.columna << ")\n";
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        // Tiempo visible en cada interseccion para que el movimiento sea lento.
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
         // Libera la interseccion antes de avanzar a la siguiente.
         interseccion.salir();

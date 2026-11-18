@@ -94,7 +94,7 @@ std::vector<Coordenada> PlanificadorRutas::calcularRuta(
             break;
         }
 
-        // A* revisa las cuatro intersecciones vecinas.
+        // A* recorre las cuatro direcciones del mapa.
         for (const auto& movimiento : movimientos)
         {
             Coordenada vecino{

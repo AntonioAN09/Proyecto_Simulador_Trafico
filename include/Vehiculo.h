@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mutex> // Protege la posicion mostrada por Raylib.
 #include <vector>
 
 #include "Ciudad.h"
@@ -17,6 +18,8 @@ public:
         Coordenada inicio,
         Coordenada destino);
     void conducir();
+    Coordenada obtenerPosicionActual() const;
+    bool estaEsperando() const;
 
 private:
     // Genera una ruta usando el algoritmo A*.
@@ -27,5 +30,8 @@ private:
     Metricas& metricas_;
     Coordenada inicio_;
     Coordenada destino_;
+    mutable std::mutex mutexPosicion_;
+    Coordenada posicionActual_;
+    bool esperando_;
 };
 

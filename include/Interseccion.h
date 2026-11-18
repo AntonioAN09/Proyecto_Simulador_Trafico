@@ -11,6 +11,7 @@ public:
     bool intentarEntrar();
     void salir();
     bool permitePaso() const;
+    EstadoSemaforo obtenerEstadoSemaforo() const;
 
 private:
     // Evita que dos vehiculos ocupen la interseccion al mismo tiempo.

@@ -23,3 +23,8 @@ bool Interseccion::permitePaso() const
     return semaforo_.permitePaso();
 }
 
+EstadoSemaforo Interseccion::obtenerEstadoSemaforo() const
+{
+    return semaforo_.obtenerEstado();
+}
+
