@@ -1,9 +1,18 @@
 #include "Interseccion.h"
 
-Interseccion::Interseccion()
+Interseccion::Interseccion(
+    int tiempoVerde,
+    int tiempoAmarillo,
+    int tiempoRojo,
+    bool tieneSemaforo)
+    : semaforo_(tiempoVerde, tiempoAmarillo, tiempoRojo),
+      tieneSemaforo_(tieneSemaforo)
 {
-    // Cada interseccion inicia su propio hilo de semaforo.
-    semaforo_.iniciar();
+    // Solo las avenidas principales tienen semaforo activo.
+    if (tieneSemaforo_)
+    {
+        semaforo_.iniciar();
+    }
 }
 
 bool Interseccion::intentarEntrar()
@@ -20,7 +29,44 @@ void Interseccion::salir()
 
 bool Interseccion::permitePaso() const
 {
+    if (!tieneSemaforo_)
+    {
+        return true;
+    }
     return semaforo_.permitePaso();
+}
+
+bool Interseccion::permitePasoHorizontal() const
+{
+    if (!tieneSemaforo_)
+    {
+        return true;
+    }
+    return Semaforo::permitePasoHorizontal();
+}
+
+bool Interseccion::permitePasoVertical() const
+{
+    if (!tieneSemaforo_)
+    {
+        return true;
+    }
+    return Semaforo::permitePasoVertical();
+}
+
+EstadoSemaforo Interseccion::obtenerEstadoHorizontal() const
+{
+    return Semaforo::obtenerEstadoHorizontal();
+}
+
+EstadoSemaforo Interseccion::obtenerEstadoVertical() const
+{
+    return Semaforo::obtenerEstadoVertical();
+}
+
+bool Interseccion::tieneSemaforo() const
+{
+    return tieneSemaforo_;
 }
 
 EstadoSemaforo Interseccion::obtenerEstadoSemaforo() const

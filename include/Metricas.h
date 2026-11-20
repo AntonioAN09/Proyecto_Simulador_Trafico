@@ -12,6 +12,7 @@ struct ResultadoVehiculo
     int identificador;
     long long tiempoViajeMilisegundos;
     long long tiempoEsperaMilisegundos;
+    double porcentajeDetenido;
 };
 
 struct ResultadoCongestion
@@ -29,6 +30,8 @@ public:
     void finalizarViaje(int identificador);
     std::vector<ResultadoVehiculo> obtenerResultados() const;
     std::vector<ResultadoCongestion> obtenerCongestion() const;
+    void registrarChoqueEvitado();
+    int obtenerChoquesEvitados() const;
 
 private:
     struct Registro
@@ -43,6 +46,7 @@ private:
     };
 
     mutable std::mutex mutex_;
+    int choquesEvitados_ = 0;
     std::map<int, Registro> registros_;
     std::map<std::pair<int, int>, int> esperandoActual_;
     std::map<std::pair<int, int>, int> congestionMaxima_;

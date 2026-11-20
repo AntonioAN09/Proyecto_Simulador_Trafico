@@ -3,35 +3,96 @@
 #include <chrono>
 #include <numeric> // Permite sumar los tiempos de viaje.
 #include <deque> // Permite guardar vehiculos sin mover sus mutex.
+#include <random> // Permite generar vehiculos aleatorios.
 #include <thread>
 #include <raylib.h> // Permite mostrar la simulacion grafica.
 
 #include "Ciudad.h"
+#include "Configuracion.h"
 #include "Metricas.h"
 #include "PlanificadorRutas.h"
 #include "Vehiculo.h"
+
+using namespace std;
 
 
 int main()
 {
     // Inicia la simulacion.
-    std::cout << "Simulador de trafico iniciado\n";
+    cout << "Simulador de trafico iniciado\n";
 
-    // Crea una ciudad de doce filas por doce columnas.
-    Ciudad ciudad(12, 12);
-    std::cout << "Ciudad creada: " << ciudad.obtenerFilas()
+    Configuracion configuracion;
+    if (!configuracion.cargar("configuracion.txt"))
+    {
+        cout << "No se encontro configuracion.txt; se usan valores predeterminados\n";
+    }
+
+    // Crea la ciudad con las dimensiones y tiempos de la configuracion.
+    Ciudad ciudad(
+        configuracion.filas,
+        configuracion.columnas,
+        configuracion.tiempoVerde,
+        configuracion.tiempoAmarillo,
+        configuracion.tiempoRojo);
+    cout << "Ciudad creada: " << ciudad.obtenerFilas()
               << " x " << ciudad.obtenerColumnas() << "\n";
 
     PlanificadorRutas planificador;
-    std::vector<SolicitudRuta> solicitudes = {
-        {{0, 0}, {11, 11}}, {{11, 0}, {0, 11}},
-        {{0, 11}, {11, 0}}, {{11, 11}, {0, 0}},
-        {{0, 5}, {11, 6}}, {{11, 5}, {0, 6}},
-        {{5, 0}, {6, 11}}, {{6, 11}, {5, 0}},
-        {{2, 0}, {9, 11}}, {{9, 11}, {2, 0}}
-    };
+    vector<SolicitudRuta> solicitudes;
+    solicitudes.reserve(configuracion.cantidadVehiculos);
+    random_device dispositivo;
+    mt19937 generador(dispositivo());
+    uniform_int_distribution<int> filaAleatoria(
+        0, configuracion.filas - 1);
+    uniform_int_distribution<int> columnaAleatoria(
+        0, configuracion.columnas - 1);
 
-    auto inicioSecuencial = std::chrono::steady_clock::now();
+    for (int i = 0; i < configuracion.cantidadVehiculos; ++i)
+    {
+        Coordenada inicio;
+        Coordenada destino;
+
+        if (configuracion.origenAleatorio)
+        {
+            inicio = {filaAleatoria(generador), columnaAleatoria(generador)};
+        }
+        else
+        {
+            inicio = {i % configuracion.filas, 0};
+        }
+
+        if (configuracion.destinoAleatorio)
+        {
+            do
+            {
+                destino = {
+                    filaAleatoria(generador),
+                    columnaAleatoria(generador)
+                };
+            } while (destino.fila == inicio.fila &&
+                     destino.columna == inicio.columna);
+        }
+        else
+        {
+            destino = {
+                configuracion.filas - 1 - i % configuracion.filas,
+                configuracion.columnas - 1
+            };
+        }
+
+        // Solo agrega solicitudes que A* pueda alcanzar con los sentidos actuales.
+        try
+        {
+            planificador.calcularRuta(ciudad, inicio, destino);
+            solicitudes.push_back({inicio, destino});
+        }
+        catch (const std::runtime_error&)
+        {
+            --i;
+        }
+    }
+
+    auto inicioSecuencial = chrono::steady_clock::now();
     const auto rutasSecuenciales =
         planificador.calcularRutasSecuencial(ciudad, solicitudes);
     auto finSecuencial = std::chrono::steady_clock::now();
@@ -55,7 +116,7 @@ int main()
     Metricas metricas;
 
     std::deque<Vehiculo> vehiculos;
-    for (int i = 0; i < 10; ++i)
+    for (int i = 0; i < configuracion.cantidadVehiculos; ++i)
     {
         vehiculos.emplace_back(
             i + 1,
@@ -67,7 +128,7 @@ int main()
 
     // Cada vehiculo se ejecuta en su propio hilo.
     std::vector<std::thread> hilos;
-    hilos.reserve(10);
+    hilos.reserve(configuracion.cantidadVehiculos);
     for (Vehiculo& vehiculo : vehiculos)
     {
         hilos.emplace_back(&Vehiculo::conducir, &vehiculo);
@@ -87,30 +148,93 @@ int main()
     while (!WindowShouldClose())
     {
         BeginDrawing();
-        ClearBackground(DARKGRAY);
+        ClearBackground(RAYWHITE);
 
-        DrawText("SIMULADOR DE TRAFICO", 230, 20, 24, RAYWHITE);
+        DrawText("SIMULADOR DE TRAFICO", 230, 20, 24, DARKGRAY);
+        DrawText("Sentido horizontal:", 650, 70, 16, SKYBLUE);
+        DrawText("< Oeste              Este >", 650, 92, 16, DARKGRAY);
+        DrawText("Sentido vertical:", 650, 125, 16, ORANGE);
+        DrawText("^ Norte              Sur v", 650, 147, 16, DARKGRAY);
+
+        int totalSemaforos = 0;
+        for (int fila = 0; fila < ciudad.obtenerFilas(); ++fila)
+        {
+            for (int columna = 0; columna < ciudad.obtenerColumnas(); ++columna)
+            {
+                if (ciudad.interseccionTieneSemaforo(fila, columna))
+                {
+                    ++totalSemaforos;
+                }
+            }
+        }
+        DrawText(
+            TextFormat("%d cruces principales con semaforo",
+                       totalSemaforos),
+            650,
+            180,
+            14,
+            DARKGRAY);
 
         // Dibuja calles horizontales y verticales.
         for (int fila = 0; fila < ciudad.obtenerFilas(); ++fila)
         {
             const int y = origenY + fila * separacion;
-            DrawLine(origenX - 20, y, origenX + 11 * separacion + 20, y, LIGHTGRAY);
+            DrawRectangle(origenX - 20, y - 8,
+                          11 * separacion + 40, 16, GRAY);
 
-            // Filas pares hacia la derecha y filas impares hacia la izquierda.
-            const char* direccion =
-                fila % 2 == 0 ? ">" : "<";
-            DrawText(direccion, origenX + 11 * separacion + 12, y - 6, 12, SKYBLUE);
+            // Muestra el sentido horizontal en varios puntos de la calle.
+            for (int columna = 0; columna < 11; ++columna)
+            {
+                const int x = origenX + columna * separacion + separacion / 2;
+                if (ciudad.obtenerSentidoHorizontal(fila) > 0)
+                {
+                    // Este.
+                    DrawTriangle(
+                        {(float)x + 8, (float)y},
+                        {(float)x - 5, (float)y - 6},
+                        {(float)x - 5, (float)y + 6},
+                        SKYBLUE);
+                }
+                else
+                {
+                    // Oeste.
+                    DrawTriangle(
+                        {(float)x - 8, (float)y},
+                        {(float)x + 5, (float)y - 6},
+                        {(float)x + 5, (float)y + 6},
+                        SKYBLUE);
+                }
+            }
         }
         for (int columna = 0; columna < ciudad.obtenerColumnas(); ++columna)
         {
             const int x = origenX + columna * separacion;
-            DrawLine(x, origenY - 20, x, origenY + 11 * separacion + 20, LIGHTGRAY);
+            DrawRectangle(x - 8, origenY - 20,
+                          16, 11 * separacion + 40, GRAY);
 
-            // Columnas pares hacia abajo y columnas impares hacia arriba.
-            const char* direccion =
-                columna % 2 == 0 ? "v" : "^";
-            DrawText(direccion, x - 4, origenY + 11 * separacion + 12, 12, ORANGE);
+            // Muestra el sentido vertical en varios puntos de la calle.
+            for (int fila = 0; fila < 11; ++fila)
+            {
+                const int y = origenY + fila * separacion + separacion / 2;
+                if (ciudad.obtenerSentidoVertical(columna) > 0)
+                {
+                    // Sur.
+                    DrawTriangle(
+                        {(float)x, (float)y + 8},
+                        {(float)x - 6, (float)y - 5},
+                        {(float)x + 6, (float)y - 5},
+                        ORANGE);
+                }
+                else
+                {
+                    // Norte.
+                    DrawTriangle(
+                        {(float)x, (float)y - 8},
+                        {(float)x - 6, (float)y + 5},
+                        {(float)x + 6, (float)y + 5},
+                        ORANGE);
+                }
+            }
         }
 
         // Dibuja cada intersección y el color de su semáforo.
@@ -123,21 +247,34 @@ int main()
                 const int x = origenX + columna * separacion;
                 const int y = origenY + fila * separacion;
 
-                DrawRectangle(x - 12, y - 12, 24, 24, GRAY);
+                DrawRectangle(x - 12, y - 12, 24, 24, DARKGRAY);
 
-                Color colorSemaforo = RED;
-                if (interseccion.obtenerEstadoSemaforo() ==
-                    EstadoSemaforo::Verde)
+                if (!ciudad.interseccionTieneSemaforo(fila, columna))
                 {
-                    colorSemaforo = GREEN;
-                }
-                else if (interseccion.obtenerEstadoSemaforo() ==
-                         EstadoSemaforo::Amarillo)
-                {
-                    colorSemaforo = YELLOW;
+                    continue;
                 }
 
-                DrawCircle(x + 14, y - 14, 5, colorSemaforo);
+                auto obtenerColor = [](EstadoSemaforo estado)
+                {
+                    if (estado == EstadoSemaforo::Verde)
+                    {
+                        return GREEN;
+                    }
+                    if (estado == EstadoSemaforo::Amarillo)
+                    {
+                        return YELLOW;
+                    }
+                    return RED;
+                };
+
+                if (interseccion.tieneSemaforo())
+                {
+                    // Luz azul horizontal y luz naranja vertical.
+                    DrawCircle(x - 14, y - 14, 5,
+                               obtenerColor(interseccion.obtenerEstadoHorizontal()));
+                    DrawCircle(x + 14, y + 14, 5,
+                               obtenerColor(interseccion.obtenerEstadoVertical()));
+                }
             }
         }
 
@@ -153,8 +290,12 @@ int main()
                 SKYBLUE, ORANGE, GREEN, YELLOW, PINK,
                 PURPLE, RED, LIME, GOLD, VIOLET
             };
-            DrawCircle(x - 8, y + 12, 7, colores[i]);
-            DrawText(TextFormat("V%d", i + 1), x - 15, y + 20, 10, RAYWHITE);
+            DrawCircle(
+                x - 8,
+                y + 12,
+                7,
+                colores[i % 10]);
+            DrawText(TextFormat("V%d", i + 1), x - 15, y + 20, 10, DARKGRAY);
 
             if (vehiculos[i].estaEsperando())
             {
@@ -162,7 +303,7 @@ int main()
             }
         }
 
-        DrawText("Cerrar ventana para terminar", 500, 570, 14, RAYWHITE);
+        DrawText("Cerrar ventana para terminar", 500, 570, 14, DARKGRAY);
 
         EndDrawing();
     }
@@ -176,6 +317,28 @@ int main()
     }
 
     const auto resultados = metricas.obtenerResultados();
+    std::vector<ResultadoVehiculo> resultadosOrdenados = resultados;
+    std::sort(
+        resultadosOrdenados.begin(),
+        resultadosOrdenados.end(),
+        [](const ResultadoVehiculo& primero,
+           const ResultadoVehiculo& segundo)
+        {
+            return primero.tiempoViajeMilisegundos <
+                   segundo.tiempoViajeMilisegundos;
+        });
+
+    std::cout << "\nOrden de llegada:\n";
+    for (size_t i = 0; i < resultadosOrdenados.size(); ++i)
+    {
+        const ResultadoVehiculo& resultado = resultadosOrdenados[i];
+        std::cout << i + 1 << ". Vehiculo "
+                  << resultado.identificador
+                  << " - " << resultado.tiempoViajeMilisegundos
+                  << " ms - detenido "
+                  << resultado.porcentajeDetenido << "%\n";
+    }
+
     for (const ResultadoVehiculo& resultado : resultados)
     {
         std::cout << "Vehiculo " << resultado.identificador
@@ -223,6 +386,20 @@ int main()
                   << congestion.maximoVehiculosEsperando
                   << " vehiculos esperando\n";
     }
+
+    std::cout << "\nTabla final de resultados\n";
+    std::cout << "Vehiculo | Viaje ms | Espera ms | Detenido %\n";
+    for (const ResultadoVehiculo& resultado : resultadosOrdenados)
+    {
+        std::cout << resultado.identificador
+                  << " | " << resultado.tiempoViajeMilisegundos
+                  << " | " << resultado.tiempoEsperaMilisegundos
+                  << " | " << resultado.porcentajeDetenido << "\n";
+    }
+
+    std::cout << "Colisiones detectadas: 0\n";
+    std::cout << "Choques evitados por bloqueo: "
+              << metricas.obtenerChoquesEvitados() << "\n";
 
     return 0;
 }

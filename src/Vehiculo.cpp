@@ -1,15 +1,7 @@
 #include "Vehiculo.h"
 
 #include <chrono> // Permite simular el tiempo que tarda el vehiculo en cruzar.
-#include <iostream>
-#include <mutex>
 #include <thread> // Permite ejecutar la conduccion de cada vehiculo en paralelo.
-
-namespace
-{
-// Evita que los mensajes de los hilos se mezclen en la consola.
-std::mutex mutexConsola;
-}
 
 Vehiculo::Vehiculo(
     int identificador,
@@ -49,6 +41,8 @@ void Vehiculo::conducir()
     // Cada vehiculo recorre su propia copia de la ruta.
     const std::vector<Coordenada> ruta = calcularRuta();
 
+    Coordenada anterior = ruta.empty() ? inicio_ : ruta.front();
+
     for (const Coordenada& coordenada : ruta)
     {
         {
@@ -60,21 +54,43 @@ void Vehiculo::conducir()
             ciudad_.obtenerInterseccion(coordenada.fila, coordenada.columna);
 
         bool esperando = false;
-        while (!interseccion.permitePaso() || !interseccion.intentarEntrar())
+        while (true)
         {
-            if (!esperando)
+            const bool movimientoHorizontal =
+                coordenada.fila == anterior.fila;
+            const bool puedeAvanzar =
+                interseccion.permitePaso() &&
+                (movimientoHorizontal
+                    ? interseccion.permitePasoHorizontal()
+                    : interseccion.permitePasoVertical());
+
+            if (!puedeAvanzar)
             {
-                metricas_.iniciarEspera(identificador_, coordenada);
-                esperando = true;
-                std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
-                esperando_ = true;
+                if (!esperando)
+                {
+                    metricas_.iniciarEspera(identificador_, coordenada);
+                    esperando = true;
+                    std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+                    esperando_ = true;
+                }
+            }
+            else if (!interseccion.intentarEntrar())
+            {
+                metricas_.registrarChoqueEvitado();
+                if (!esperando)
+                {
+                    metricas_.iniciarEspera(identificador_, coordenada);
+                    esperando = true;
+                    std::lock_guard<std::mutex> bloqueo(mutexPosicion_);
+                    esperando_ = true;
+                }
+            }
+            else
+            {
+                break;
             }
 
-            // Aqui el vehiculo espera a que el semaforo y la interseccion esten libres.
-            std::lock_guard<std::mutex> bloqueo(mutexConsola);
-            std::cout << "Vehiculo " << identificador_
-                      << " espera en (" << coordenada.fila << ","
-                      << coordenada.columna << ")\n";
+            // Espera sin repetir el mismo mensaje en cada ciclo.
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
@@ -85,22 +101,12 @@ void Vehiculo::conducir()
             esperando_ = false;
         }
 
-        {
-            std::lock_guard<std::mutex> bloqueo(mutexConsola);
-            std::cout << "Vehiculo " << identificador_
-                      << " esta en (" << coordenada.fila << ","
-                      << coordenada.columna << ")\n";
-        }
         // Tiempo visible en cada interseccion para que el movimiento sea lento.
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
         // Libera la interseccion antes de avanzar a la siguiente.
         interseccion.salir();
-    }
-
-    {
-        std::lock_guard<std::mutex> bloqueo(mutexConsola);
-        std::cout << "Vehiculo " << identificador_ << " llego a su destino\n";
+        anterior = coordenada;
     }
 
     metricas_.finalizarViaje(identificador_);

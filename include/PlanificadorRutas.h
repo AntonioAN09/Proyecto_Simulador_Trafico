@@ -28,5 +28,9 @@ public:
 
 private:
     int calcularHeuristica(Coordenada actual, Coordenada destino) const;
+    bool movimientoPermitido(
+        const Ciudad& ciudad,
+        Coordenada actual,
+        Coordenada vecino) const;
 };
 

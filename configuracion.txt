@@ -1,0 +1,8 @@
+vehiculos=10
+filas=12
+columnas=12
+tiempoVerde=2
+tiempoAmarillo=1
+tiempoRojo=3
+origenAleatorio=true
+destinoAleatorio=true

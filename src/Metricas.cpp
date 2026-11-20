@@ -8,6 +8,18 @@ void Metricas::iniciarViaje(int identificador)
     registros_[identificador].inicioViaje = std::chrono::steady_clock::now();
 }
 
+void Metricas::registrarChoqueEvitado()
+{
+    std::lock_guard<std::mutex> bloqueo(mutex_);
+    ++choquesEvitados_;
+}
+
+int Metricas::obtenerChoquesEvitados() const
+{
+    std::lock_guard<std::mutex> bloqueo(mutex_);
+    return choquesEvitados_;
+}
+
 void Metricas::iniciarEspera(int identificador, Coordenada coordenada)
 {
     std::lock_guard<std::mutex> bloqueo(mutex_);
@@ -89,7 +101,11 @@ std::vector<ResultadoVehiculo> Metricas::obtenerResultados() const
         resultados.push_back({
             identificador,
             registro.tiempoViajeMilisegundos,
-            registro.tiempoEsperaMilisegundos
+            registro.tiempoEsperaMilisegundos,
+            registro.tiempoViajeMilisegundos > 0
+                ? (static_cast<double>(registro.tiempoEsperaMilisegundos) *
+                   100.0 / registro.tiempoViajeMilisegundos)
+                : 0.0
         });
     }
 

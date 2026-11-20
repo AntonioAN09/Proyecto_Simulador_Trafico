@@ -21,6 +21,10 @@ public:
     void iniciar();
     EstadoSemaforo obtenerEstado() const;
     bool permitePaso() const;
+    static bool permitePasoHorizontal();
+    static bool permitePasoVertical();
+    static EstadoSemaforo obtenerEstadoHorizontal();
+    static EstadoSemaforo obtenerEstadoVertical();
 
 private:
     // Hilo que cambia el estado del semaforo.

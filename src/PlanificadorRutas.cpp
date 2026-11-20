@@ -44,6 +44,34 @@ int PlanificadorRutas::calcularHeuristica(
            std::abs(actual.columna - destino.columna);
 }
 
+bool PlanificadorRutas::movimientoPermitido(
+    const Ciudad& ciudad,
+    Coordenada actual,
+    Coordenada vecino) const
+{
+    if (vecino.fila == actual.fila)
+    {
+        if (std::abs(vecino.columna - actual.columna) != 1)
+        {
+            return false;
+        }
+        return ciudad.obtenerSentidoHorizontal(actual.fila) ==
+               (vecino.columna - actual.columna);
+    }
+
+    if (vecino.columna == actual.columna)
+    {
+        if (std::abs(vecino.fila - actual.fila) != 1)
+        {
+            return false;
+        }
+        return ciudad.obtenerSentidoVertical(actual.columna) ==
+               (vecino.fila - actual.fila);
+    }
+
+    return false;
+}
+
 std::vector<Coordenada> PlanificadorRutas::calcularRuta(
     const Ciudad& ciudad,
     Coordenada inicio,
@@ -103,6 +131,12 @@ std::vector<Coordenada> PlanificadorRutas::calcularRuta(
             };
 
             if (!esValida(vecino))
+            {
+                continue;
+            }
+
+            // Evita usar calles en contra de su sentido establecido.
+            if (!movimientoPermitido(ciudad, actual.coordenada, vecino))
             {
                 continue;
             }
